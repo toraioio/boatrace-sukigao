@@ -29,7 +29,7 @@ for lo in range(2000, 5600, 100):
             timeout=30,
         )
 
-        print("STATUS", lo, hi, r.status_code)
+        r.raise_for_status()
 
         soup = BeautifulSoup(r.text, "html.parser")
 
@@ -37,36 +37,51 @@ for lo in range(2000, 5600, 100):
         print("ERROR", lo, hi, e)
         continue
 
-    # ページ内のリンクを全部確認
-    for a in soup.find_all("a", href=True):
+    # レーサー検索結果のテーブルを探す
+    for row in soup.select("table tbody tr"):
 
-        href = a["href"]
+        cells = row.find_all("td")
 
-        # racersearch/profile のリンクだけ取得
-        if "racersearch/profile" not in href:
+        if not cells:
             continue
 
-        text = " ".join(a.stripped_strings)
+        row_text = " ".join(row.stripped_strings)
 
         # 4桁の登録番号を探す
-        match = re.search(r"\b(\d{4})\b", text)
+        match = re.search(r"(?<!\d)(\d{4})(?!\d)", row_text)
 
         if not match:
             continue
 
         racer_id = match.group(1)
 
+        # 行の中にあるプロフィールへのリンク
+        profile_link = None
+
+        for a in row.find_all("a", href=True):
+            href = a["href"]
+
+            if "racersearch" in href or "profile" in href:
+                profile_link = href
+                break
+
+        if not profile_link:
+            continue
+
         # 名前
-        name = re.sub(
-            r"\b\d{4}\b",
-            "",
-            text
-        ).strip()
+        name = ""
+
+        for a in row.find_all("a"):
+            text = " ".join(a.stripped_strings)
+
+            if text and not re.fullmatch(r"\d{4}", text):
+                name = text
+                break
 
         # 写真
         photo = ""
 
-        img = a.find("img")
+        img = row.find("img")
 
         if img:
             src = img.get("src") or img.get("data-src")
@@ -78,7 +93,7 @@ for lo in range(2000, 5600, 100):
             "id": racer_id,
             "name": name,
             "photo": photo,
-            "profile": urljoin(r.url, href),
+            "profile": urljoin(r.url, profile_link),
         }
 
     print(lo, hi, "racers:", len(items))
