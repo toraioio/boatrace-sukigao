@@ -1,1 +1,1 @@
-window.RACERS=[];
+const racers = [];
