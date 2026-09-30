@@ -1,29 +1,72 @@
 import requests
 from bs4 import BeautifulSoup
+import json
+import time
 
-url = "https://www.boatrace.jp/owpc/pc/data/racersearch/result"
+URL = "https://www.boatrace.jp/owpc/pc/data/racersearch/result"
 
-params = {
-    "prevpgid": "TDAT320",
-    "toban_left": "2000",
-    "toban_right": "2099",
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36"
 }
 
-r = requests.get(
-    url,
-    params=params,
-    headers={"User-Agent": "Mozilla/5.0"},
-    timeout=30,
-)
+racers = []
 
-print("STATUS:", r.status_code)
+session = requests.Session()
+session.headers.update(headers)
 
-soup = BeautifulSoup(r.text, "html.parser")
+for start in range(2000, 5600, 100):
+    end = start + 99
 
-print("TITLE:", soup.title.get_text(strip=True) if soup.title else "なし")
+    params = {
+        "prevpgid": "TDAT320",
+        "toban_left": str(start),
+        "toban_right": str(end),
+    }
 
-text = soup.get_text(" ", strip=True)
+    try:
+        r = session.get(URL, params=params, timeout=30)
+        print("STATUS", start, end, r.status_code)
 
-print("2538あり:", "2538" in text)
-print("高橋 二朗あり:", "高橋" in text)
-print("HTML文字数:", len(r.text))
+        soup = BeautifulSoup(r.text, "html.parser")
+
+        for row in soup.select("table tbody tr"):
+            cells = row.find_all("td")
+
+            if len(cells) < 3:
+                continue
+
+            text = [c.get_text(" ", strip=True) for c in cells]
+
+            number = ""
+            name = ""
+
+            for value in text:
+                if value.isdigit() and len(value) == 4:
+                    number = value
+
+            for value in text:
+                if value and not value.isdigit() and len(value) >= 2:
+                    name = value
+                    break
+
+            if number and name:
+                racers.append({
+                    "number": number,
+                    "name": name
+                })
+
+        print(start, end, "racers:", len(racers))
+
+        time.sleep(1)
+
+    except Exception as e:
+        print("ERROR:", e)
+
+print("TOTAL RACERS:", len(racers))
+
+with open("racers.js", "w", encoding="utf-8") as f:
+    f.write("const racers = ")
+    json.dump(racers, f, ensure_ascii=False, indent=2)
+    f.write(";")
+
+print("racers.js generated!")
