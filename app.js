@@ -1,196 +1,121 @@
 const R = window.RACERS || [];
 
-let rounds = 200;
-let step = 0;
-let history = [];
-let a = null;
-let b = null;
-let scores = new Map();
+const TOTAL_ROUNDS = 10;
+const GROUP_SIZE = 9;
+
+let round = 0;
+let current = [];
+let selected = new Set();
+let counts = new Map();
 
 const $ = id => document.getElementById(id);
 
-function reset() {
-  step = 0;
-  history = [];
-  a = null;
-  b = null;
+function startGame() {
+  round = 0;
+  current = [];
+  selected = new Set();
 
-  scores = new Map(
-    R.map(x => [x.id, 1000])
+  counts = new Map(
+    R.map(racer => [racer.id, 0])
   );
 
   $("setup").hidden = true;
   $("result").hidden = true;
   $("game").hidden = false;
 
-  next();
+  nextRound();
 }
 
-function pick() {
-  if (R.length < 2) {
-    return;
+function makeGroup() {
+  const shuffled = [...R];
+
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
 
-  const firstIndex = Math.floor(Math.random() * R.length);
-  let secondIndex = Math.floor(Math.random() * R.length);
-
-  while (secondIndex === firstIndex) {
-    secondIndex = Math.floor(Math.random() * R.length);
-  }
-
-  a = R[firstIndex];
-  b = R[secondIndex];
+  return shuffled.slice(0, GROUP_SIZE);
 }
 
-function next() {
-  if (step >= rounds) {
+function nextRound() {
+  if (round >= TOTAL_ROUNDS) {
     finish();
     return;
   }
 
-  pick();
-  render();
+  current = makeGroup();
+  selected = new Set();
+
+  round++;
+
+  renderGroup();
 }
 
-function render() {
-  $("progress").textContent = `${step} / ${rounds}`;
+function renderGroup() {
+  $("progress").textContent =
+    `${round} / ${TOTAL_ROUNDS}`;
 
-  if (!a || !b) {
-    return;
-  }
+  $("selectedCount").textContent =
+    "0人選択中";
 
-  for (const [id, x] of [
-    ["left", a],
-    ["right", b]
-  ]) {
-    const el = $(id);
+  const container = $("cards9");
 
-    const img = el.querySelector("img");
-    const name = el.querySelector(".name");
-    const meta = el.querySelector(".meta");
+  container.innerHTML = "";
 
-    img.src = x.photo;
-    img.alt = x.name;
+  current.forEach(racer => {
+    const card = document.createElement("button");
 
-    name.textContent = x.name;
+    card.className = "card9";
 
-    meta.textContent =
-      `${x.id}${x.grade ? "　" + x.grade : ""}`;
-  }
-}
+    card.innerHTML = `
+      <img src="${racer.photo}" alt="${racer.name}">
+      <div class="name">${racer.name}</div>
+      <div class="meta">
+        ${racer.id}${racer.grade ? "　" + racer.grade : ""}
+      </div>
+    `;
 
-function choose(winner, loser) {
-  if (!winner || !loser) {
-    return;
-  }
-
-  history.push([
-    a,
-    b,
-    new Map(scores),
-    step
-  ]);
-
-  const sa = scores.get(winner.id) || 1000;
-  const sb = scores.get(loser.id) || 1000;
-
-  const ea =
-    1 / (1 + Math.pow(10, (sb - sa) / 400));
-
-  const k = 24;
-
-  scores.set(
-    winner.id,
-    sa + k * (1 - ea)
-  );
-
-  scores.set(
-    loser.id,
-    sb - k * (1 - ea)
-  );
-
-  step++;
-
-  next();
-}
-
-function both() {
-  if (!a || !b) {
-    return;
-  }
-
-  history.push([
-    a,
-    b,
-    new Map(scores),
-    step
-  ]);
-
-  scores.set(
-    a.id,
-    (scores.get(a.id) || 1000) + 4
-  );
-
-  scores.set(
-    b.id,
-    (scores.get(b.id) || 1000) + 4
-  );
-
-  step++;
-
-  next();
-}
-
-$("left").onclick = () => {
-  choose(a, b);
-};
-
-$("right").onclick = () => {
-  choose(b, a);
-};
-
-$("skip").onclick = () => {
-  if (!a || !b) {
-    return;
-  }
-
-  history.push([
-    a,
-    b,
-    new Map(scores),
-    step
-  ]);
-
-  step++;
-
-  next();
-};
-
-$("both").onclick = both;
-
-$("undo").onclick = () => {
-  const h = history.pop();
-
-  if (!h) {
-    return;
-  }
-
-  [a, b, scores, step] = h;
-
-  $("game").hidden = false;
-  $("result").hidden = true;
-
-  render();
-};
-
-document
-  .querySelectorAll("[data-rounds]")
-  .forEach(button => {
-    button.onclick = () => {
-      rounds = Number(button.dataset.rounds);
-      reset();
+    card.onclick = () => {
+      toggleSelection(racer, card);
     };
+
+    container.appendChild(card);
   });
+
+  $("next").textContent =
+    round === TOTAL_ROUNDS ? "結果を見る" : "次へ";
+}
+
+function toggleSelection(racer, card) {
+  if (selected.has(racer.id)) {
+    selected.delete(racer.id);
+    card.classList.remove("selected");
+  } else {
+    selected.add(racer.id);
+    card.classList.add("selected");
+  }
+
+  $("selectedCount").textContent =
+    `${selected.size}人選択中`;
+}
+
+function saveSelections() {
+  selected.forEach(id => {
+    counts.set(
+      id,
+      (counts.get(id) || 0) + 1
+    );
+  });
+}
+
+$("start").onclick = () => {
+  startGame();
+};
+
+$("next").onclick = () => {
+  saveSelections();
+  nextRound();
+};
 
 $("again").onclick = () => {
   $("result").hidden = true;
@@ -202,30 +127,45 @@ function finish() {
   $("result").hidden = false;
 
   const top = [...R]
-    .sort(
-      (x, y) =>
-        (scores.get(y.id) || 0) -
-        (scores.get(x.id) || 0)
-    )
+    .sort((a, b) => {
+      const countA = counts.get(a.id) || 0;
+      const countB = counts.get(b.id) || 0;
+
+      return countB - countA;
+    })
     .slice(0, 9);
 
   $("ranking").innerHTML = top
-    .map((x, i) => `
-      <div class="rank">
-        <div class="num">${i + 1}</div>
-        <img src="${x.photo}" alt="${x.name}">
-        <div>
-          <div class="rn">${x.name}</div>
-          <div class="rm">
-            ${x.id}${x.grade ? "　" + x.grade : ""}
+    .map((racer, index) => {
+      const count = counts.get(racer.id) || 0;
+
+      return `
+        <div class="rank">
+          <div class="num">${index + 1}</div>
+
+          <img
+            src="${racer.photo}"
+            alt="${racer.name}"
+          >
+
+          <div>
+            <div class="rn">${racer.name}</div>
+
+            <div class="rm">
+              ${racer.id}${racer.grade ? "　" + racer.grade : ""}
+            </div>
+
+            <div class="rm">
+              選んだ回数：${count}回
+            </div>
           </div>
         </div>
-      </div>
-    `)
+      `;
+    })
     .join("");
 }
 
-if (!R.length) {
+if (R.length < GROUP_SIZE) {
   $("setup").innerHTML = `
     <h2>レーサーデータを読み込めませんでした</h2>
     <p class="note">
