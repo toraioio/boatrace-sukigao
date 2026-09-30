@@ -1,66 +1,42 @@
 import requests
 from bs4 import BeautifulSoup
+import re
 import json
-import time
 
-URL = "https://www.boatrace.jp/owpc/pc/data/racersearch/result"
+URL = "https://aiboatrace.jp/racers"
 
 headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0"
 }
 
+r = requests.get(URL, headers=headers, timeout=30)
+
+# 日本語の文字コードを正しく判定
+r.encoding = r.apparent_encoding
+
+soup = BeautifulSoup(r.text, "html.parser")
+
+# ページ内の文字から「名前＋4桁の登録番号」を取得
+text = soup.get_text(" ", strip=True)
+
+matches = re.findall(
+    r"([一-龥ぁ-んァ-ヶ々ー]{2,8})\s*(\d{4})",
+    text
+)
+
 racers = []
+seen = set()
 
-session = requests.Session()
-session.headers.update(headers)
+for name, number in matches:
+    if number in seen:
+        continue
 
-for start in range(2000, 5600, 100):
-    end = start + 99
+    seen.add(number)
 
-    params = {
-        "prevpgid": "TDAT320",
-        "toban_left": str(start),
-        "toban_right": str(end),
-    }
-
-    try:
-        r = session.get(URL, params=params, timeout=30)
-        print("STATUS", start, end, r.status_code)
-
-        soup = BeautifulSoup(r.text, "html.parser")
-
-        for row in soup.select("table tbody tr"):
-            cells = row.find_all("td")
-
-            if len(cells) < 3:
-                continue
-
-            text = [c.get_text(" ", strip=True) for c in cells]
-
-            number = ""
-            name = ""
-
-            for value in text:
-                if value.isdigit() and len(value) == 4:
-                    number = value
-
-            for value in text:
-                if value and not value.isdigit() and len(value) >= 2:
-                    name = value
-                    break
-
-            if number and name:
-                racers.append({
-                    "number": number,
-                    "name": name
-                })
-
-        print(start, end, "racers:", len(racers))
-
-        time.sleep(1)
-
-    except Exception as e:
-        print("ERROR:", e)
+    racers.append({
+        "number": number,
+        "name": name
+    })
 
 print("TOTAL RACERS:", len(racers))
 
